@@ -14,6 +14,9 @@ export interface ImageData {
   preview: string;
   name: string;
   dimensions: { width: number; height: number };
+  rotation: number; // New: rotation in degrees (0, 90, 180, 270)
+  brightness: number; // New: brightness adjustment (-100 to 100)
+  contrast: number; // New: contrast adjustment (-100 to 100)
 }
 
 export class PDFConverter {
@@ -93,8 +96,8 @@ export class PDFConverter {
       const image = images[i];
       
       try {
-        // Convert image to canvas
-        const canvas = await this.imageToCanvas(image.preview);
+        // Convert image to canvas with rotation and editing
+        const canvas = await this.processImage(image);
         
         // Calculate image dimensions to fit on page
         const { width, height } = this.calculateImageDimensions(
@@ -163,8 +166,8 @@ export class PDFConverter {
       }
 
       try {
-        // Convert image to canvas
-        const canvas = await this.imageToCanvas(image.preview);
+        // Convert image to canvas with rotation and editing
+        const canvas = await this.processImage(image);
         
         // Calculate position in grid
         const col = imagesOnCurrentPage % cols;
@@ -197,6 +200,98 @@ export class PDFConverter {
         // Continue with next image
       }
     }
+  }
+
+  /**
+   * Process image with rotation and editing effects
+   */
+  private async processImage(image: ImageData): Promise<HTMLCanvasElement> {
+    // Convert image URL to canvas
+    let canvas = await this.imageToCanvas(image.preview);
+    
+    // Apply rotation
+    if (image.rotation !== 0) {
+      canvas = this.rotateCanvas(canvas, image.rotation);
+    }
+    
+    // Apply brightness and contrast adjustments
+    if (image.brightness !== 0 || image.contrast !== 0) {
+      canvas = this.adjustBrightnessContrast(canvas, image.brightness, image.contrast);
+    }
+    
+    return canvas;
+  }
+
+  /**
+   * Rotate canvas by specified degrees
+   */
+  private rotateCanvas(canvas: HTMLCanvasElement, degrees: number): HTMLCanvasElement {
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return canvas;
+
+    // Calculate new dimensions for rotated canvas
+    const radians = (degrees * Math.PI) / 180;
+    const cos = Math.abs(Math.cos(radians));
+    const sin = Math.abs(Math.sin(radians));
+    
+    const newWidth = Math.ceil(canvas.width * cos + canvas.height * sin);
+    const newHeight = Math.ceil(canvas.width * sin + canvas.height * cos);
+    
+    // Create new canvas with rotated dimensions
+    const rotatedCanvas = document.createElement('canvas');
+    rotatedCanvas.width = newWidth;
+    rotatedCanvas.height = newHeight;
+    
+    const rotatedCtx = rotatedCanvas.getContext('2d');
+    if (!rotatedCtx) return canvas;
+    
+    // Move to center of new canvas
+    rotatedCtx.translate(newWidth / 2, newHeight / 2);
+    
+    // Rotate
+    rotatedCtx.rotate(radians);
+    
+    // Draw rotated image
+    rotatedCtx.drawImage(canvas, -canvas.width / 2, -canvas.height / 2);
+    
+    return rotatedCanvas;
+  }
+
+  /**
+   * Adjust brightness and contrast of canvas
+   */
+  private adjustBrightnessContrast(
+    canvas: HTMLCanvasElement, 
+    brightness: number, 
+    contrast: number
+  ): HTMLCanvasElement {
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return canvas;
+
+    // Get image data
+    const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    const data = imageData.data;
+    
+    // Apply brightness and contrast adjustments
+    const brightnessFactor = 1 + (brightness / 100);
+    const contrastFactor = 1 + (contrast / 100);
+    
+    for (let i = 0; i < data.length; i += 4) {
+      // Apply brightness
+      data[i] = Math.max(0, Math.min(255, data[i] * brightnessFactor));
+      data[i + 1] = Math.max(0, Math.min(255, data[i + 1] * brightnessFactor));
+      data[i + 2] = Math.max(0, Math.min(255, data[i + 2] * brightnessFactor));
+      
+      // Apply contrast
+      data[i] = Math.max(0, Math.min(255, ((data[i] - 128) * contrastFactor) + 128));
+      data[i + 1] = Math.max(0, Math.min(255, ((data[i + 1] - 128) * contrastFactor) + 128));
+      data[i + 2] = Math.max(0, Math.min(255, ((data[i + 2] - 128) * contrastFactor) + 128));
+    }
+    
+    // Put modified image data back
+    ctx.putImageData(imageData, 0, 0);
+    
+    return canvas;
   }
 
   /**
@@ -274,4 +369,34 @@ export async function convertImagesToPDF(
 ): Promise<Blob> {
   const converter = new PDFConverter(settings);
   return converter.convertToPDF(images);
+}
+
+/**
+ * Utility function to rotate image
+ */
+export function rotateImage(imageData: ImageData, degrees: number): ImageData {
+  return {
+    ...imageData,
+    rotation: (imageData.rotation + degrees) % 360
+  };
+}
+
+/**
+ * Utility function to adjust brightness
+ */
+export function adjustBrightness(imageData: ImageData, brightness: number): ImageData {
+  return {
+    ...imageData,
+    brightness: Math.max(-100, Math.min(100, brightness))
+  };
+}
+
+/**
+ * Utility function to adjust contrast
+ */
+export function adjustContrast(imageData: ImageData, contrast: number): ImageData {
+  return {
+    ...imageData,
+    contrast: Math.max(-100, Math.min(100, contrast))
+  };
 }

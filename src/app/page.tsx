@@ -9,8 +9,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Upload, FileImage, Download, Trash2, RotateCw, SortAsc, SortDesc, Eye, AlertCircle, CheckCircle } from "lucide-react";
-import { convertImagesToPDF, PDFSettings, ImageData } from "@/lib/pdf-converter";
+import { Upload, FileImage, Download, Trash2, RotateCw, SortAsc, SortDesc, Eye, AlertCircle, CheckCircle, RotateCcw, Sun, Contrast } from "lucide-react";
+import { convertImagesToPDF, PDFSettings, ImageData, rotateImage, adjustBrightness, adjustContrast } from "@/lib/pdf-converter";
 
 interface ImageFile {
   id: string;
@@ -20,6 +20,9 @@ interface ImageFile {
   size: number;
   dimensions: { width: number; height: number };
   uploadTime: Date;
+  rotation: number;
+  brightness: number;
+  contrast: number;
 }
 
 type SortOption = "name" | "size" | "date" | "dimensions";
@@ -41,6 +44,7 @@ export default function ImageToPDFConverter() {
   const [selectedImages, setSelectedImages] = useState<Set<string>>(new Set());
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+  const [editingImage, setEditingImage] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const dropZoneRef = useRef<HTMLDivElement>(null);
 
@@ -85,7 +89,10 @@ export default function ImageToPDFConverter() {
         name: file.name,
         size: file.size,
         dimensions: { width: 0, height: 0 },
-        uploadTime: new Date()
+        uploadTime: new Date(),
+        rotation: 0,
+        brightness: 0,
+        contrast: 0
       };
     });
 
@@ -137,6 +144,7 @@ export default function ImageToPDFConverter() {
     });
     setError(null);
     setSuccess(null);
+    setEditingImage(null);
   }, []);
 
   // Toggle image selection
@@ -162,7 +170,40 @@ export default function ImageToPDFConverter() {
     setSelectedImages(new Set());
     setError(null);
     setSuccess(null);
+    setEditingImage(null);
   }, [selectedImages]);
+
+  // Rotate image
+  const rotateImageHandler = useCallback((id: string, degrees: number) => {
+    setImages(prev => prev.map(img => 
+      img.id === id 
+        ? { ...img, rotation: (img.rotation + degrees) % 360 }
+        : img
+    ));
+  }, []);
+
+  // Adjust brightness
+  const adjustBrightnessHandler = useCallback((id: string, brightness: number) => {
+    setImages(prev => prev.map(img => 
+      img.id === id 
+        ? { ...img, brightness: Math.max(-100, Math.min(100, brightness)) }
+        : img
+    ));
+  }, []);
+
+  // Adjust contrast
+  const adjustContrastHandler = useCallback((id: string, contrast: number) => {
+    setImages(prev => prev.map(img => 
+      img.id === id 
+        ? { ...img, contrast: Math.max(-100, Math.min(100, contrast)) }
+        : img
+    ));
+  }, []);
+
+  // Toggle editing mode
+  const toggleEditing = useCallback((id: string) => {
+    setEditingImage(prev => prev === id ? null : id);
+  }, []);
 
   // Sort images
   const sortedImages = useCallback(() => {
@@ -203,7 +244,10 @@ export default function ImageToPDFConverter() {
         file: img.file,
         preview: img.preview,
         name: img.name,
-        dimensions: img.dimensions
+        dimensions: img.dimensions,
+        rotation: img.rotation,
+        brightness: img.brightness,
+        contrast: img.contrast
       }));
       
       // Prepare PDF settings
@@ -416,6 +460,10 @@ export default function ImageToPDFConverter() {
                             src={image.preview}
                             alt={image.name}
                             className="w-full h-32 object-cover rounded-md mb-3"
+                            style={{
+                              transform: `rotate(${image.rotation}deg)`,
+                              filter: `brightness(${100 + image.brightness}%) contrast(${100 + image.contrast}%)`
+                            }}
                           />
                           <div className="absolute top-2 right-2">
                             <input
@@ -425,14 +473,24 @@ export default function ImageToPDFConverter() {
                               className="w-4 h-4"
                             />
                           </div>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="absolute top-2 left-2 opacity-0 group-hover:opacity-100 transition-opacity"
-                            onClick={() => removeImage(image.id)}
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
+                          <div className="absolute top-2 left-2 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => removeImage(image.id)}
+                              className="h-8 w-8 p-0"
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => toggleEditing(image.id)}
+                              className="h-8 w-8 p-0"
+                            >
+                              <Eye className="h-4 w-4" />
+                            </Button>
+                          </div>
                         </div>
                         
                         <div className="space-y-2">
@@ -443,8 +501,129 @@ export default function ImageToPDFConverter() {
                             <p>Size: {formatFileSize(image.size)}</p>
                             <p>Dimensions: {image.dimensions.width} × {image.dimensions.height}</p>
                             <p>Uploaded: {image.uploadTime.toLocaleTimeString()}</p>
+                            {(image.rotation !== 0 || image.brightness !== 0 || image.contrast !== 0) && (
+                              <div className="flex gap-1 flex-wrap">
+                                {image.rotation !== 0 && (
+                                  <Badge variant="outline" className="text-xs">Rotated {image.rotation}°</Badge>
+                                )}
+                                {image.brightness !== 0 && (
+                                  <Badge variant="outline" className="text-xs">Brightness {image.brightness > 0 ? '+' : ''}{image.brightness}</Badge>
+                                )}
+                                {image.contrast !== 0 && (
+                                  <Badge variant="outline" className="text-xs">Contrast {image.contrast > 0 ? '+' : ''}{image.contrast}</Badge>
+                                )}
+                              </div>
+                            )}
                           </div>
                         </div>
+
+                        {/* Image Editing Controls */}
+                        {editingImage === image.id && (
+                          <div className="mt-4 p-3 bg-muted/50 rounded-lg space-y-3">
+                            <div className="flex items-center justify-between">
+                              <span className="text-sm font-medium">Image Editing</span>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => setEditingImage(null)}
+                                className="h-6 w-6 p-0"
+                              >
+                                ×
+                              </Button>
+                            </div>
+                            
+                            {/* Rotation Controls */}
+                            <div className="space-y-2">
+                              <Label className="text-xs">Rotation</Label>
+                              <div className="flex gap-1">
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => rotateImageHandler(image.id, -90)}
+                                  className="h-8 w-8 p-0"
+                                >
+                                  <RotateCcw className="h-3 w-3" />
+                                </Button>
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => rotateImageHandler(image.id, 90)}
+                                  className="h-8 w-8 p-0"
+                                >
+                                  <RotateCw className="h-3 w-3" />
+                                </Button>
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => rotateImageHandler(image.id, 180)}
+                                  className="h-8 w-8 p-0 text-xs"
+                                >
+                                  180°
+                                </Button>
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => rotateImageHandler(image.id, -image.rotation)}
+                                  className="h-8 w-8 p-0 text-xs"
+                                >
+                                  Reset
+                                </Button>
+                              </div>
+                            </div>
+
+                            {/* Brightness Control */}
+                            <div className="space-y-2">
+                              <div className="flex items-center justify-between">
+                                <Label className="text-xs flex items-center gap-1">
+                                  <Sun className="h-3 w-3" />
+                                  Brightness
+                                </Label>
+                                <span className="text-xs text-muted-foreground">{image.brightness}</span>
+                              </div>
+                              <input
+                                type="range"
+                                min="-100"
+                                max="100"
+                                value={image.brightness}
+                                onChange={(e) => adjustBrightnessHandler(image.id, parseInt(e.target.value))}
+                                className="w-full h-2 bg-muted rounded-lg appearance-none cursor-pointer"
+                              />
+                            </div>
+
+                            {/* Contrast Control */}
+                            <div className="space-y-2">
+                              <div className="flex items-center justify-between">
+                                <Label className="text-xs flex items-center gap-1">
+                                  <Contrast className="h-3 w-3" />
+                                  Contrast
+                                </Label>
+                                <span className="text-xs text-muted-foreground">{image.contrast}</span>
+                              </div>
+                              <input
+                                type="range"
+                                min="-100"
+                                max="100"
+                                value={image.contrast}
+                                onChange={(e) => adjustContrastHandler(image.id, parseInt(e.target.value))}
+                                className="w-full h-2 bg-muted rounded-lg appearance-none cursor-pointer"
+                              />
+                            </div>
+
+                            {/* Reset All */}
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => {
+                                rotateImageHandler(image.id, -image.rotation);
+                                adjustBrightnessHandler(image.id, -image.brightness);
+                                adjustContrastHandler(image.id, -image.contrast);
+                              }}
+                              className="w-full h-8 text-xs"
+                            >
+                              Reset All
+                            </Button>
+                          </div>
+                        )}
                       </CardContent>
                     </Card>
                   ))}
