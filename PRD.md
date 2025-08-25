@@ -49,6 +49,8 @@ A web-based application that allows users to:
 - **Image Information:** Display file size, dimensions, format
 - **Remove Images:** Individual or batch removal
 - **Image Rotation:** 90°, 180°, 270° rotation options
+- **Brightness Adjustment:** -100% to +100% brightness control
+- **Contrast Adjustment:** -100% to +100% contrast control
 
 #### 4.4 PDF Conversion
 - **Page Size Options:** A4, Letter, Legal, Custom dimensions
@@ -89,38 +91,38 @@ A web-based application that allows users to:
 
 ### 6. Development Stages
 
-#### Stage 1: MVP (Minimum Viable Product)
-- [ ] Basic image upload (drag & drop)
-- [ ] Support for JPG, PNG formats only
-- [ ] Simple image list with basic sorting (name, size)
-- [ ] Basic PDF conversion (A4, portrait)
-- [ ] Download functionality
-- [ ] Responsive design basics
+#### Stage 1: MVP (Minimum Viable Product) ✅ **COMPLETED**
+- [x] Basic image upload (drag & drop)
+- [x] Support for JPG, PNG formats only
+- [x] Simple image list with basic sorting (name, size)
+- [x] Basic PDF conversion (A4, portrait)
+- [x] Download functionality
+- [x] Responsive design basics
+- [x] **Testing & Validation:** MCP Playwright testing, console error checking and fixing
+
+**Stage 1 Completion:** ✅ **COMPLETED** - All MVP features implemented and tested
+
+#### Stage 2: Enhanced Features ✅ **COMPLETED**
+- [x] Additional image format support (GIF, BMP, TIFF, WebP)
+- [x] Advanced sorting options (date, dimensions)
+- [x] Image rotation and basic editing ✅ **NEWLY IMPLEMENTED**
+- [x] Multiple page size options
+- [x] Improved error handling and validation
+- [x] **Testing & Validation:** MCP Playwright testing, console error checking and fixing
+
+**Stage 2 Completion:** ✅ **COMPLETED** - All enhanced features implemented and tested
+
+#### Stage 3: Advanced Features 🔄 **IN PROGRESS**
+- [x] Manual image reordering (drag & drop) ✅ **COMPLETED**
+- [x] Batch operations and selection ✅ **Already implemented**
+- [x] Custom PDF settings (margins, quality, compression) ✅ **Quality and compression implemented**
+- [ ] PDF preview functionality ⚠️ **To implement**
+- [ ] User preferences and settings ⚠️ **To implement**
 - [ ] **Testing & Validation:** MCP Playwright testing, console error checking and fixing
 
-**Stage 1 Completion:** [ ] 
+**Stage 3 Completion:** 🔄 **60% COMPLETE** - Drag & drop reordering completed and tested, moving to PDF preview functionality
 
-#### Stage 2: Enhanced Features
-- [ ] Additional image format support (GIF, BMP, TIFF, WebP)
-- [ ] Advanced sorting options (date, dimensions)
-- [ ] Image rotation and basic editing
-- [ ] Multiple page size options
-- [ ] Improved error handling and validation
-- [ ] **Testing & Validation:** MCP Playwright testing, console error checking and fixing
-
-**Stage 2 Completion:** [ ] 
-
-#### Stage 3: Advanced Features
-- [ ] Manual image reordering (drag & drop)
-- [ ] Batch operations and selection
-- [ ] Custom PDF settings (margins, quality, compression)
-- [ ] PDF preview functionality
-- [ ] User preferences and settings
-- [ ] **Testing & Validation:** MCP Playwright testing, console error checking and fixing
-
-**Stage 3 Completion:** [ ] 
-
-#### Stage 4: Polish & Optimization
+#### Stage 4: Polish & Optimization ⏳ **PENDING**
 - [ ] Performance optimization
 - [ ] Advanced UI/UX improvements
 - [ ] Accessibility enhancements
@@ -128,8 +130,11 @@ A web-based application that allows users to:
 - [ ] Mobile app optimization
 - [ ] **Testing & Validation:** MCP Playwright testing, console error checking and fixing
 
-**Stage 4 Completion:** [ ]
+**Stage 4 Completion:** ⏳ **PENDING** - Awaiting completion of Stage 3
 
+ update the PRD.md to reflect the completion of tasks.
+
+ 
 ### 7. User Experience Requirements
 
 #### 7.1 Interface Design
@@ -143,9 +148,10 @@ A web-based application that allows users to:
 1. **Landing Page:** Clear value proposition and upload area
 2. **File Selection:** Drag & drop or click to browse
 3. **Image Management:** Preview, sort, and organize images
-4. **PDF Settings:** Configure output options
-5. **Conversion:** Real-time progress and status
-6. **Download:** Access to generated PDF
+4. **Image Editing:** Rotate, adjust brightness/contrast
+5. **PDF Settings:** Configure output options
+6. **Conversion:** Real-time progress and status
+7. **Download:** Access to generated PDF
 
 ### 8. Security & Privacy
 
@@ -241,7 +247,8 @@ A web-based application that allows users to:
 
 ---
 
-**Document Version:** 1.0  
-**Last Updated:** [Current Date]  
-**Next Review:** [TBD]  
-**Stakeholders:** Development Team, Product Manager, UX Designer
+**Document Version:** 2.0  
+**Last Updated:** August 25, 2025  
+**Next Review:** After Stage 3 completion  
+**Stakeholders:** Development Team, Product Manager, UX Designer  
+**Current Status:** Stage 2 completed, Stage 3 at 60% (drag & drop reordering completed)

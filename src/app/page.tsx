@@ -9,7 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Upload, FileImage, Download, Trash2, RotateCw, SortAsc, SortDesc, Eye, AlertCircle, CheckCircle, RotateCcw, Sun, Contrast } from "lucide-react";
+import { Upload, FileImage, Download, Trash2, RotateCw, SortAsc, SortDesc, Eye, AlertCircle, CheckCircle, RotateCcw, Sun, Contrast, GripVertical, Move } from "lucide-react";
 import { convertImagesToPDF, PDFSettings, ImageData, rotateImage, adjustBrightness, adjustContrast } from "@/lib/pdf-converter";
 
 interface ImageFile {
@@ -23,9 +23,10 @@ interface ImageFile {
   rotation: number;
   brightness: number;
   contrast: number;
+  order: number; // New: for drag and drop reordering
 }
 
-type SortOption = "name" | "size" | "date" | "dimensions";
+type SortOption = "name" | "size" | "date" | "dimensions" | "custom";
 type SortOrder = "asc" | "desc";
 type PageSize = "A4" | "Letter" | "Legal";
 type Orientation = "portrait" | "landscape";
@@ -34,7 +35,7 @@ type Layout = "one-per-page" | "multiple-per-page";
 
 export default function ImageToPDFConverter() {
   const [images, setImages] = useState<ImageFile[]>([]);
-  const [sortBy, setSortBy] = useState<SortOption>("name");
+  const [sortBy, setSortBy] = useState<SortOption>("custom"); // Default to custom order
   const [sortOrder, setSortOrder] = useState<SortOrder>("asc");
   const [pageSize, setPageSize] = useState<PageSize>("A4");
   const [orientation, setOrientation] = useState<Orientation>("portrait");
@@ -45,6 +46,8 @@ export default function ImageToPDFConverter() {
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [editingImage, setEditingImage] = useState<string | null>(null);
+  const [draggedImage, setDraggedImage] = useState<string | null>(null);
+  const [dragOverImage, setDragOverImage] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const dropZoneRef = useRef<HTMLDivElement>(null);
 
@@ -78,7 +81,7 @@ export default function ImageToPDFConverter() {
     
     if (validFiles.length === 0) return;
     
-    const newImages: ImageFile[] = validFiles.map(file => {
+    const newImages: ImageFile[] = validFiles.map((file, index) => {
       const id = Math.random().toString(36).substr(2, 9);
       const preview = URL.createObjectURL(file);
       
@@ -92,7 +95,8 @@ export default function ImageToPDFConverter() {
         uploadTime: new Date(),
         rotation: 0,
         brightness: 0,
-        contrast: 0
+        contrast: 0,
+        order: images.length + index // Maintain order
       };
     });
 
@@ -116,13 +120,13 @@ export default function ImageToPDFConverter() {
     setSuccess(`Successfully uploaded ${validFiles.length} image${validFiles.length !== 1 ? 's' : ''}`);
   }, [images]);
 
-  // Handle drag and drop
-  const handleDragOver = useCallback((e: React.DragEvent) => {
+  // Handle file upload drag and drop
+  const handleFileDragOver = useCallback((e: React.DragEvent) => {
     e.preventDefault();
     e.stopPropagation();
   }, []);
 
-  const handleDrop = useCallback((e: React.DragEvent) => {
+  const handleFileDrop = useCallback((e: React.DragEvent) => {
     e.preventDefault();
     e.stopPropagation();
     handleFileSelect(e.dataTransfer.files);
@@ -173,6 +177,61 @@ export default function ImageToPDFConverter() {
     setEditingImage(null);
   }, [selectedImages]);
 
+  // Drag and drop reordering
+  const handleImageDragStart = useCallback((e: React.DragEvent, imageId: string) => {
+    setDraggedImage(imageId);
+    e.dataTransfer.effectAllowed = 'move';
+  }, []);
+
+  const handleImageDragOver = useCallback((e: React.DragEvent, imageId: string) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    if (draggedImage && draggedImage !== imageId) {
+      setDragOverImage(imageId);
+    }
+  }, [draggedImage]);
+
+  const handleImageDragLeave = useCallback(() => {
+    setDragOverImage(null);
+  }, []);
+
+  const handleImageDrop = useCallback((e: React.DragEvent, targetImageId: string) => {
+    e.preventDefault();
+    if (!draggedImage || draggedImage === targetImageId) {
+      setDraggedImage(null);
+      setDragOverImage(null);
+      return;
+    }
+
+    setImages(prev => {
+      const draggedImg = prev.find(img => img.id === draggedImage);
+      const targetImg = prev.find(img => img.id === targetImageId);
+      
+      if (!draggedImg || !targetImg) return prev;
+
+      const newImages = [...prev];
+      const draggedIndex = newImages.findIndex(img => img.id === draggedImage);
+      const targetIndex = newImages.findIndex(img => img.id === targetImageId);
+
+      // Remove dragged image
+      newImages.splice(draggedIndex, 1);
+
+      // Insert at target position
+      newImages.splice(targetIndex, 0, draggedImg);
+
+      // Update order numbers
+      newImages.forEach((img, index) => {
+        img.order = index;
+      });
+
+      return newImages;
+    });
+
+    setDraggedImage(null);
+    setDragOverImage(null);
+    setSortBy("custom"); // Switch to custom order after manual reordering
+  }, [draggedImage]);
+
   // Rotate image
   const rotateImageHandler = useCallback((id: string, degrees: number) => {
     setImages(prev => prev.map(img => 
@@ -207,6 +266,10 @@ export default function ImageToPDFConverter() {
 
   // Sort images
   const sortedImages = useCallback(() => {
+    if (sortBy === "custom") {
+      return [...images].sort((a, b) => a.order - b.order);
+    }
+
     return [...images].sort((a, b) => {
       let comparison = 0;
       
@@ -223,6 +286,8 @@ export default function ImageToPDFConverter() {
         case "dimensions":
           comparison = (a.dimensions.width * a.dimensions.height) - (b.dimensions.width * b.dimensions.height);
           break;
+        default:
+          return 0;
       }
       
       return sortOrder === "asc" ? comparison : -comparison;
@@ -238,8 +303,8 @@ export default function ImageToPDFConverter() {
     setSuccess(null);
     
     try {
-      // Prepare images for conversion
-      const imagesForConversion: ImageData[] = images.map(img => ({
+      // Prepare images for conversion in current order
+      const imagesForConversion: ImageData[] = sortedImages().map(img => ({
         id: img.id,
         file: img.file,
         preview: img.preview,
@@ -281,7 +346,7 @@ export default function ImageToPDFConverter() {
     } finally {
       setIsConverting(false);
     }
-  }, [images, pageSize, orientation, quality, layout]);
+  }, [images, pageSize, orientation, quality, layout, sortedImages]);
 
   // Format file size
   const formatFileSize = (bytes: number) => {
@@ -354,13 +419,13 @@ export default function ImageToPDFConverter() {
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <div
-                ref={dropZoneRef}
-                onDragOver={handleDragOver}
-                onDrop={handleDrop}
-                className="border-2 border-dashed border-muted-foreground/25 rounded-lg p-8 text-center hover:border-muted-foreground/50 transition-colors cursor-pointer"
-                onClick={() => fileInputRef.current?.click()}
-              >
+                                        <div
+                            ref={dropZoneRef}
+                            onDragOver={handleFileDragOver}
+                            onDrop={handleFileDrop}
+                            className="border-2 border-dashed border-muted-foreground/25 rounded-lg p-8 text-center hover:border-muted-foreground/50 transition-colors cursor-pointer"
+                            onClick={() => fileInputRef.current?.click()}
+                          >
                 <Upload className="mx-auto h-12 w-12 text-muted-foreground mb-4" />
                 <p className="text-lg font-medium text-foreground mb-2">
                   Drop images here or click to browse
@@ -389,6 +454,7 @@ export default function ImageToPDFConverter() {
                     <CardTitle>Image Management</CardTitle>
                     <CardDescription>
                       {images.length} image{images.length !== 1 ? 's' : ''} uploaded
+                      {sortBy === "custom" && " - Drag and drop to reorder"}
                     </CardDescription>
                   </div>
                   <div className="flex items-center gap-2">
@@ -432,6 +498,7 @@ export default function ImageToPDFConverter() {
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
+                      <SelectItem value="custom">Custom Order</SelectItem>
                       <SelectItem value="name">Name</SelectItem>
                       <SelectItem value="size">Size</SelectItem>
                       <SelectItem value="date">Date</SelectItem>
@@ -439,21 +506,35 @@ export default function ImageToPDFConverter() {
                     </SelectContent>
                   </Select>
                   
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setSortOrder(prev => prev === "asc" ? "desc" : "asc")}
-                    className="flex items-center gap-2"
-                  >
-                    {sortOrder === "asc" ? <SortAsc className="h-4 w-4" /> : <SortDesc className="h-4 w-4" />}
-                    {sortOrder === "asc" ? "Ascending" : "Descending"}
-                  </Button>
+                  {sortBy !== "custom" && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setSortOrder(prev => prev === "asc" ? "desc" : "asc")}
+                      className="flex items-center gap-2"
+                    >
+                      {sortOrder === "asc" ? <SortAsc className="h-4 w-4" /> : <SortDesc className="h-4 w-4" />}
+                      {sortOrder === "asc" ? "Ascending" : "Descending"}
+                    </Button>
+                  )}
                 </div>
 
                 {/* Image Grid */}
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-                  {sortedImages().map((image) => (
-                    <Card key={image.id} className="relative group">
+                  {sortedImages().map((image, index) => (
+                    <Card 
+                      key={image.id} 
+                      className={`relative group transition-all duration-200 ${
+                        draggedImage === image.id ? 'opacity-50 scale-95' : ''
+                      } ${
+                        dragOverImage === image.id ? 'ring-2 ring-primary ring-offset-2' : ''
+                      }`}
+                      draggable={sortBy === "custom"}
+                      onDragStart={(e) => handleImageDragStart(e, image.id)}
+                      onDragOver={(e) => handleImageDragOver(e, image.id)}
+                      onDragLeave={handleImageDragLeave}
+                      onDrop={(e) => handleImageDrop(e, image.id)}
+                    >
                       <CardContent className="p-4">
                         <div className="relative">
                           <img
@@ -465,6 +546,16 @@ export default function ImageToPDFConverter() {
                               filter: `brightness(${100 + image.brightness}%) contrast(${100 + image.contrast}%)`
                             }}
                           />
+                          
+                          {/* Drag Handle */}
+                          {sortBy === "custom" && (
+                            <div className="absolute top-2 left-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                              <div className="bg-background/80 rounded p-1 cursor-move">
+                                <GripVertical className="h-4 w-4 text-muted-foreground" />
+                              </div>
+                            </div>
+                          )}
+                          
                           <div className="absolute top-2 right-2">
                             <input
                               type="checkbox"
@@ -494,9 +585,16 @@ export default function ImageToPDFConverter() {
                         </div>
                         
                         <div className="space-y-2">
-                          <p className="font-medium text-sm truncate" title={image.name}>
-                            {image.name}
-                          </p>
+                          <div className="flex items-center justify-between">
+                            <p className="font-medium text-sm truncate" title={image.name}>
+                              {image.name}
+                            </p>
+                            {sortBy === "custom" && (
+                              <Badge variant="secondary" className="text-xs">
+                                #{image.order + 1}
+                              </Badge>
+                            )}
+                          </div>
                           <div className="text-xs text-muted-foreground space-y-1">
                             <p>Size: {formatFileSize(image.size)}</p>
                             <p>Dimensions: {image.dimensions.width} × {image.dimensions.height}</p>
