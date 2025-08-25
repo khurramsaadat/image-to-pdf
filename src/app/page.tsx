@@ -1,16 +1,15 @@
 "use client";
 
-import { useState, useRef, useCallback } from "react";
+import { useState, useRef, useCallback, useEffect } from "react";
+import NextImage from "next/image";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
-import { Separator } from "@/components/ui/separator";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Upload, FileImage, Download, Trash2, RotateCw, SortAsc, SortDesc, Eye, AlertCircle, CheckCircle, RotateCcw, Sun, Contrast, GripVertical, Move, X, FileText } from "lucide-react";
-import { convertImagesToPDF, PDFSettings, ImageData, rotateImage, adjustBrightness, adjustContrast } from "@/lib/pdf-converter";
+import { Upload, Download, Trash2, RotateCw, SortAsc, SortDesc, Eye, AlertCircle, CheckCircle, RotateCcw, Sun, Contrast, GripVertical, X, FileText, Settings } from "lucide-react";
+import { convertImagesToPDF, PDFSettings, ImageData } from "@/lib/pdf-converter";
 
 interface ImageFile {
   id: string;
@@ -33,6 +32,15 @@ type Orientation = "portrait" | "landscape";
 type Quality = "low" | "medium" | "high";
 type Layout = "one-per-page" | "multiple-per-page";
 
+interface UserPreferences {
+  defaultPageSize: PageSize;
+  defaultOrientation: Orientation;
+  defaultQuality: Quality;
+  defaultLayout: Layout;
+  customFilename: string;
+  rememberSettings: boolean;
+}
+
 export default function ImageToPDFConverter() {
   const [images, setImages] = useState<ImageFile[]>([]);
   const [sortBy, setSortBy] = useState<SortOption>("custom"); // Default to custom order
@@ -51,8 +59,75 @@ export default function ImageToPDFConverter() {
   const [pdfPreview, setPdfPreview] = useState<string | null>(null);
   const [showPdfPreview, setShowPdfPreview] = useState(false);
   const [previewLoading, setPreviewLoading] = useState(false);
+  const [showPreferences, setShowPreferences] = useState(false);
+  const [preferences, setPreferences] = useState<UserPreferences>({
+    defaultPageSize: "A4",
+    defaultOrientation: "portrait",
+    defaultQuality: "high",
+    defaultLayout: "one-per-page",
+    customFilename: "converted-images-{date}",
+    rememberSettings: true
+  });
   const fileInputRef = useRef<HTMLInputElement>(null);
   const dropZoneRef = useRef<HTMLDivElement>(null);
+
+  // Load preferences from localStorage
+  const loadPreferences = useCallback(() => {
+    try {
+      const saved = localStorage.getItem('imageToPdfPreferences');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        setPreferences(prev => ({ ...prev, ...parsed }));
+        
+        // Apply remembered settings if enabled
+        if (parsed.rememberSettings) {
+          setPageSize(parsed.defaultPageSize || "A4");
+          setOrientation(parsed.defaultOrientation || "portrait");
+          setQuality(parsed.defaultQuality || "high");
+          setLayout(parsed.defaultLayout || "one-per-page");
+        }
+      }
+    } catch (error) {
+      console.error('Failed to load preferences:', error);
+    }
+  }, []);
+
+  // Save preferences to localStorage
+  const savePreferences = useCallback((newPreferences: Partial<UserPreferences>) => {
+    try {
+      const updated = { ...preferences, ...newPreferences };
+      setPreferences(updated);
+      localStorage.setItem('imageToPdfPreferences', JSON.stringify(updated));
+      setSuccess('Preferences saved successfully');
+    } catch (error) {
+      console.error('Failed to save preferences:', error);
+      setError('Failed to save preferences');
+    }
+  }, [preferences]);
+
+  // Reset preferences to defaults
+  const resetPreferences = useCallback(() => {
+    const defaults: UserPreferences = {
+      defaultPageSize: "A4",
+      defaultOrientation: "portrait",
+      defaultQuality: "high",
+      defaultLayout: "one-per-page",
+      customFilename: "converted-images-{date}",
+      rememberSettings: true
+    };
+    setPreferences(defaults);
+    localStorage.removeItem('imageToPdfPreferences');
+    setSuccess('Preferences reset to defaults');
+  }, []);
+
+  // Load preferences on component mount
+  useEffect(() => {
+    loadPreferences();
+  }, [loadPreferences]);
+
+
+
+
 
   // Handle file selection
   const handleFileSelect = useCallback((files: FileList | null) => {
@@ -119,9 +194,11 @@ export default function ImageToPDFConverter() {
       imgElement.src = img.preview;
     });
 
-    setImages(prev => [...prev, ...newImages]);
-    setSuccess(`Successfully uploaded ${validFiles.length} image${validFiles.length !== 1 ? 's' : ''}`);
-  }, [images]);
+                    setImages(prev => [...prev, ...newImages]);
+                setSuccess(`Successfully uploaded ${validFiles.length} image${validFiles.length !== 1 ? 's' : ''}`);
+                
+                // Auto-preview functionality will be implemented later
+              }, [images]);
 
   // Handle file upload drag and drop
   const handleFileDragOver = useCallback((e: React.DragEvent) => {
@@ -343,6 +420,18 @@ export default function ImageToPDFConverter() {
     }
   }, [images, pageSize, orientation, quality, layout, sortedImages]);
 
+  // Generate custom filename
+  const generateCustomFilename = useCallback(() => {
+    const now = new Date();
+    const date = now.toISOString().split('T')[0];
+    const time = now.toTimeString().split(' ')[0].replace(/:/g, '-');
+    
+    return preferences.customFilename
+      .replace('{date}', date)
+      .replace('{time}', time)
+      .replace('{count}', images.length.toString());
+  }, [preferences.customFilename, images.length]);
+
   // Convert to PDF
   const convertToPDF = useCallback(async () => {
     if (images.length === 0) return;
@@ -379,7 +468,7 @@ export default function ImageToPDFConverter() {
       const url = URL.createObjectURL(pdfBlob);
       const link = document.createElement('a');
       link.href = url;
-      link.download = `converted-images-${new Date().toISOString().split('T')[0]}.pdf`;
+      link.download = `${generateCustomFilename()}.pdf`;
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
@@ -439,9 +528,16 @@ export default function ImageToPDFConverter() {
               <p className="text-muted-foreground mt-2">Convert your images to professional PDF documents</p>
             </div>
             <div className="flex items-center gap-4">
-              <Badge variant="secondary">Next.js 15</Badge>
-              <Badge variant="outline">Tailwind CSS v4</Badge>
-              <Badge variant="default">shadcn/ui</Badge>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setShowPreferences(true)}
+                className="flex items-center gap-2"
+              >
+                <Settings className="h-4 w-4" />
+                Preferences
+              </Button>
+
             </div>
           </div>
         </div>
@@ -597,7 +693,7 @@ export default function ImageToPDFConverter() {
 
                 {/* Image Grid */}
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-                  {sortedImages().map((image, index) => (
+                  {sortedImages().map((image) => (
                     <Card 
                       key={image.id} 
                       className={`relative group transition-all duration-200 ${
@@ -613,15 +709,19 @@ export default function ImageToPDFConverter() {
                     >
                       <CardContent className="p-4">
                         <div className="relative">
-                          <img
-                            src={image.preview}
-                            alt={image.name}
-                            className="w-full h-32 object-cover rounded-md mb-3"
-                            style={{
-                              transform: `rotate(${image.rotation}deg)`,
-                              filter: `brightness(${100 + image.brightness}%) contrast(${100 + image.contrast}%)`
-                            }}
-                          />
+                          <div className="relative w-full h-32 mb-3">
+                            <NextImage
+                              src={image.preview}
+                              alt={image.name}
+                              fill
+                              className="object-cover rounded-md"
+                              style={{
+                                transform: `rotate(${image.rotation}deg)`,
+                                filter: `brightness(${100 + image.brightness}%) contrast(${100 + image.contrast}%)`
+                              }}
+                              unoptimized // Since we're using blob URLs
+                            />
+                          </div>
                           
                           {/* Drag Handle */}
                           {sortBy === "custom" && (
@@ -876,6 +976,163 @@ export default function ImageToPDFConverter() {
           </Card>
         </div>
       </main>
+
+      {/* Preferences Modal */}
+      {showPreferences && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-background rounded-lg shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+            {/* Modal Header */}
+            <div className="flex items-center justify-between p-4 border-b">
+              <div className="flex items-center gap-2">
+                <Settings className="h-5 w-5 text-primary" />
+                <h3 className="text-lg font-semibold">User Preferences</h3>
+              </div>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setShowPreferences(false)}
+                className="h-8 w-8 p-0"
+              >
+                <X className="h-4 w-4" />
+              </Button>
+            </div>
+            
+            {/* Modal Content */}
+            <div className="p-4 space-y-6">
+              {/* Default PDF Settings */}
+              <div className="space-y-4">
+                <h4 className="font-medium text-foreground">Default PDF Settings</h4>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <Label htmlFor="default-page-size">Default Page Size</Label>
+                    <Select 
+                      value={preferences.defaultPageSize} 
+                      onValueChange={(value: PageSize) => savePreferences({ defaultPageSize: value })}
+                    >
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="A4">A4 (210 × 297 mm)</SelectItem>
+                        <SelectItem value="Letter">Letter (8.5 × 11 in)</SelectItem>
+                        <SelectItem value="Legal">Legal (8.5 × 14 in)</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  
+                  <div>
+                    <Label htmlFor="default-orientation">Default Orientation</Label>
+                    <Select 
+                      value={preferences.defaultOrientation} 
+                      onValueChange={(value: Orientation) => savePreferences({ defaultOrientation: value })}
+                    >
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="portrait">Portrait</SelectItem>
+                        <SelectItem value="landscape">Landscape</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  
+                  <div>
+                    <Label htmlFor="default-quality">Default Quality</Label>
+                    <Select 
+                      value={preferences.defaultQuality} 
+                      onValueChange={(value: Quality) => savePreferences({ defaultQuality: value })}
+                    >
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="low">Low (72 DPI)</SelectItem>
+                        <SelectItem value="medium">Medium (150 DPI)</SelectItem>
+                        <SelectItem value="high">High (300 DPI)</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  
+                  <div>
+                    <Label htmlFor="default-layout">Default Layout</Label>
+                    <Select 
+                      value={preferences.defaultLayout} 
+                      onValueChange={(value: Layout) => savePreferences({ defaultLayout: value })}
+                    >
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="one-per-page">One image per page</SelectItem>
+                        <SelectItem value="multiple-per-page">Multiple images per page</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+              </div>
+
+              {/* Custom Filename */}
+              <div className="space-y-4">
+                <h4 className="font-medium text-foreground">Custom Filename</h4>
+                <div className="space-y-2">
+                  <Label htmlFor="custom-filename">Filename Template</Label>
+                  <Input
+                    id="custom-filename"
+                    value={preferences.customFilename}
+                    onChange={(e) => savePreferences({ customFilename: e.target.value })}
+                    placeholder="converted-images-{date}"
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Available variables: {'{date}'}, {'{time}'}, {'{count}'}
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    Example: {generateCustomFilename()}.pdf
+                  </p>
+                </div>
+              </div>
+
+              {/* Behavior Settings */}
+              <div className="space-y-4">
+                <h4 className="font-medium text-foreground">Behavior Settings</h4>
+                <div className="space-y-3">
+                  <div className="flex items-center space-x-2">
+                    <input
+                      type="checkbox"
+                      id="remember-settings"
+                      checked={preferences.rememberSettings}
+                      onChange={(e) => savePreferences({ rememberSettings: e.target.checked })}
+                      className="w-4 h-4"
+                    />
+                    <Label htmlFor="remember-settings">Remember last used settings</Label>
+                  </div>
+                  
+
+                </div>
+              </div>
+            </div>
+            
+            {/* Modal Footer */}
+            <div className="flex items-center justify-between p-4 border-t">
+              <div className="text-sm text-muted-foreground">
+                Preferences are saved automatically
+              </div>
+              <div className="flex gap-2">
+                <Button
+                  variant="outline"
+                  onClick={resetPreferences}
+                >
+                  Reset to Defaults
+                </Button>
+                <Button
+                  onClick={() => setShowPreferences(false)}
+                >
+                  Close
+                </Button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* PDF Preview Modal */}
       {showPdfPreview && pdfPreview && (

@@ -1,5 +1,4 @@
 import jsPDF from 'jspdf';
-import html2canvas from 'html2canvas';
 
 export interface PDFSettings {
   pageSize: 'A4' | 'Letter' | 'Legal';
@@ -51,8 +50,6 @@ export class PDFConverter {
    * Create PDF document with proper settings
    */
   private createPDFDocument(): jsPDF {
-    const pageSize = this.getPageDimensions();
-    
     return new jsPDF({
       orientation: this.settings.orientation,
       unit: 'mm',
@@ -150,20 +147,18 @@ export class PDFConverter {
     const imageWidth = (maxWidth - (margin * (cols - 1))) / cols;
     const imageHeight = (maxHeight - (margin * (rows - 1))) / rows;
 
-    let currentPage = 0;
     let imagesOnCurrentPage = 0;
 
     for (let i = 0; i < images.length; i++) {
       const image = images[i];
       
       // Add new page if needed
-      if (imagesOnCurrentPage === 0) {
-        if (i > 0) {
-          pdf.addPage();
+              if (imagesOnCurrentPage === 0) {
+          if (i > 0) {
+            pdf.addPage();
+          }
+          imagesOnCurrentPage = 0;
         }
-        currentPage++;
-        imagesOnCurrentPage = 0;
-      }
 
       try {
         // Convert image to canvas with rotation and editing
