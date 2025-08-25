@@ -10,6 +10,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Badge } from "@/components/ui/badge";
 import { Upload, Download, Trash2, RotateCw, SortAsc, SortDesc, Eye, AlertCircle, CheckCircle, RotateCcw, Sun, Contrast, GripVertical, X, FileText, Settings } from "lucide-react";
 import { convertImagesToPDF, PDFSettings, ImageData } from "@/lib/pdf-converter";
+import { detectBrowser, applyBrowserFixes } from "@/lib/browser-utils";
+import { initializeMobileOptimizations } from "@/lib/mobile-utils";
 
 interface ImageFile {
   id: string;
@@ -70,6 +72,77 @@ export default function ImageToPDFConverter() {
   });
   const fileInputRef = useRef<HTMLInputElement>(null);
   const dropZoneRef = useRef<HTMLDivElement>(null);
+  const preferencesModalRef = useRef<HTMLDivElement>(null);
+  const pdfPreviewModalRef = useRef<HTMLDivElement>(null);
+
+  // Focus management for accessibility
+  const focusFirstFocusableElement = useCallback((modalRef: React.RefObject<HTMLDivElement | null>) => {
+    if (modalRef.current) {
+      const focusableElements = modalRef.current.querySelectorAll(
+        'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+      );
+      if (focusableElements.length > 0) {
+        (focusableElements[0] as HTMLElement).focus();
+      }
+    }
+  }, []);
+
+  const handleModalOpen = useCallback((modalType: 'preferences' | 'pdfPreview') => {
+    if (modalType === 'preferences') {
+      setShowPreferences(true);
+      setTimeout(() => focusFirstFocusableElement(preferencesModalRef), 100);
+    } else if (modalType === 'pdfPreview') {
+      setShowPdfPreview(true);
+      setTimeout(() => focusFirstFocusableElement(pdfPreviewModalRef), 100);
+    }
+  }, [focusFirstFocusableElement]);
+
+
+
+  // Initialize browser compatibility and mobile optimizations
+  useEffect(() => {
+    applyBrowserFixes();
+    
+    // Log browser information for debugging
+    const browserInfo = detectBrowser();
+    console.log('Browser detected:', browserInfo);
+    
+    // Update browser indicator
+    const browserIndicator = document.getElementById('browser-indicator');
+    if (browserIndicator) {
+      browserIndicator.textContent = `${browserInfo.name} ${browserInfo.version.split('.')[0]}`;
+    }
+    
+    // Apply browser-specific optimizations
+    if (browserInfo.isSafari) {
+      // Safari-specific optimizations
+      (document.documentElement.style as CSSStyleDeclaration & { [key: string]: string })['-webkit-font-smoothing'] = 'antialiased';
+    }
+    
+    if (browserInfo.isFirefox) {
+      // Firefox-specific optimizations
+      (document.documentElement.style as CSSStyleDeclaration & { [key: string]: string })['-moz-osx-font-smoothing'] = 'moz-osx-font-smoothing';
+    }
+    
+    if (browserInfo.isEdge) {
+      // Edge-specific optimizations
+      document.documentElement.style.fontFeatureSettings = '"liga" 1';
+    }
+    
+    // Show compatibility warnings for unsupported features
+    if (!browserInfo.supportsCSSGrid || !browserInfo.supportsFlexbox || !browserInfo.supportsCSSVariables) {
+      setError('Your browser may not support all features. For the best experience, please use a modern browser.');
+    }
+    
+    // Initialize mobile optimizations
+    const mobileOpts = initializeMobileOptimizations();
+    console.log('Mobile optimizations initialized:', mobileOpts.mobileInfo);
+    
+    // Add mobile-specific classes to body
+    if (mobileOpts.mobileInfo.isMobile) {
+      document.body.classList.add('mobile-optimized');
+    }
+  }, []);
 
   // Load preferences from localStorage
   const loadPreferences = useCallback(() => {
@@ -495,6 +568,23 @@ export default function ImageToPDFConverter() {
     }
   }, [pdfPreview]);
 
+  // Keyboard navigation support
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        if (showPreferences) {
+          setShowPreferences(false);
+        }
+        if (showPdfPreview) {
+          closePdfPreview();
+        }
+      }
+    };
+
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [showPreferences, showPdfPreview, closePdfPreview]);
+
   // Format file size
   const formatFileSize = (bytes: number) => {
     if (bytes === 0) return '0 Bytes';
@@ -520,67 +610,87 @@ export default function ImageToPDFConverter() {
   return (
     <div className="min-h-screen bg-background">
       {/* Header */}
-      <header className="border-b bg-card">
+      <header className="border-b bg-card" role="banner">
         <div className="container mx-auto px-4 py-6">
           <div className="flex items-center justify-between">
             <div>
-              <h1 className="text-3xl font-bold text-foreground">Image to PDF Converter</h1>
-              <p className="text-muted-foreground mt-2">Convert your images to professional PDF documents</p>
+              <h1 className="text-3xl font-bold text-foreground" id="main-title">Image to PDF Converter</h1>
+              <p className="text-muted-foreground mt-2" id="main-description">Convert your images to professional PDF documents</p>
             </div>
             <div className="flex items-center gap-4">
               <Button
                 variant="outline"
                 size="sm"
-                onClick={() => setShowPreferences(true)}
+                onClick={() => handleModalOpen('preferences')}
                 className="flex items-center gap-2 transition-all duration-200 hover:scale-105 hover:bg-primary/10"
+                aria-label="Open user preferences and settings"
+                aria-describedby="preferences-description"
               >
-                <Settings className="h-4 w-4" />
+                <Settings className="h-4 w-4" aria-hidden="true" />
                 Preferences
               </Button>
-
+              <span id="preferences-description" className="sr-only">Opens a modal to configure default PDF settings and user preferences</span>
+              
+              {/* Browser Compatibility Indicator */}
+              <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                <span className="hidden sm:inline">Browser:</span>
+                <Badge variant="outline" className="text-xs">
+                  <span id="browser-indicator">Detecting...</span>
+                </Badge>
+              </div>
             </div>
           </div>
         </div>
       </header>
 
       {/* Main Content */}
-      <main className="container mx-auto px-4 py-8">
+      <main className="container mx-auto px-4 py-8 mobile-padding" role="main">
         {/* Status Messages */}
         {(error || success) && (
-          <div className="mb-6 animate-in slide-in-from-top-2 duration-500">
+          <div className="mb-6 animate-in slide-in-from-top-2 duration-500" role="status" aria-live="polite">
             {error && (
-              <div className="flex items-center gap-2 p-4 bg-destructive/10 border border-destructive/20 rounded-lg text-destructive animate-in slide-in-from-left-2 duration-300">
-                <AlertCircle className="h-5 w-5" />
+              <div className="flex items-center gap-2 p-4 bg-destructive/10 border border-destructive/20 rounded-lg text-destructive animate-in slide-in-from-left-2 duration-300" role="alert">
+                <AlertCircle className="h-5 w-5" aria-hidden="true" />
                 <span>{error}</span>
               </div>
             )}
             {success && (
-              <div className="flex items-center gap-2 p-4 bg-green-500/10 border border-green-500/20 rounded-lg text-green-600 animate-in slide-in-from-right-2 duration-300">
-                <CheckCircle className="h-5 w-5" />
+              <div className="flex items-center gap-2 p-4 bg-green-500/10 border border-green-500/20 rounded-lg text-green-600 animate-in slide-in-from-right-2 duration-300" role="status">
+                <CheckCircle className="h-5 w-5" aria-hidden="true" />
                 <span>{success}</span>
               </div>
             )}
           </div>
         )}
 
-        <div className="grid gap-8">
-          {/* Upload Section */}
+        <div className="grid gap-8 mobile-optimized">
+                    {/* Upload Section */}
           <Card>
             <CardHeader>
-              <CardTitle>Upload Images</CardTitle>
-              <CardDescription>
+              <CardTitle id="upload-title">Upload Images</CardTitle>
+              <CardDescription id="upload-description">
                 Drag and drop images or click to browse. Supports JPG, PNG, GIF, BMP, TIFF, WebP formats.
               </CardDescription>
             </CardHeader>
             <CardContent>
-                                        <div
-                            ref={dropZoneRef}
-                            onDragOver={handleFileDragOver}
-                            onDrop={handleFileDrop}
-                            className="border-2 border-dashed border-muted-foreground/25 rounded-lg p-8 text-center hover:border-muted-foreground/50 transition-all duration-300 ease-in-out cursor-pointer hover:scale-[1.02] hover:shadow-lg"
-                            onClick={() => fileInputRef.current?.click()}
-                          >
-                <Upload className="mx-auto h-12 w-12 text-muted-foreground mb-4 transition-transform duration-300 hover:scale-110 hover:text-foreground" />
+              <div
+                ref={dropZoneRef}
+                onDragOver={handleFileDragOver}
+                onDrop={handleFileDrop}
+                className="border-2 border-dashed border-muted-foreground/25 rounded-lg p-8 text-center hover:border-muted-foreground/50 transition-all duration-300 ease-in-out cursor-pointer hover:scale-[1.02] hover:shadow-lg touch-target mobile-padding"
+                onClick={() => fileInputRef.current?.click()}
+                role="button"
+                tabIndex={0}
+                aria-label="Upload images by clicking or dragging and dropping"
+                aria-describedby="upload-description"
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    fileInputRef.current?.click();
+                  }
+                }}
+              >
+                <Upload className="mx-auto h-12 w-12 text-muted-foreground mb-4 transition-transform duration-300 hover:scale-110 hover:text-foreground" aria-hidden="true" />
                 <p className="text-lg font-medium text-foreground mb-2">
                   Drop images here or click to browse
                 </p>
@@ -594,6 +704,7 @@ export default function ImageToPDFConverter() {
                   accept="image/*"
                   className="hidden"
                   onChange={(e) => handleFileSelect(e.target.files)}
+                  aria-describedby="upload-description"
                 />
               </div>
             </CardContent>
@@ -605,68 +716,79 @@ export default function ImageToPDFConverter() {
               <CardHeader>
                 <div className="flex items-center justify-between">
                   <div>
-                    <CardTitle>Image Management</CardTitle>
-                    <CardDescription>
+                    <CardTitle id="image-management-title">Image Management</CardTitle>
+                    <CardDescription id="image-management-description">
                       {images.length} image{images.length !== 1 ? 's' : ''} uploaded
                       {sortBy === "custom" && " - Drag and drop to reorder"}
                     </CardDescription>
                   </div>
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2" role="toolbar" aria-label="Image management actions">
                     {selectedImages.size > 0 && (
                       <Button
                         variant="destructive"
                         size="sm"
                         onClick={removeSelectedImages}
-                        className="flex items-center gap-2"
+                        className="flex items-center gap-2 touch-button"
+                        aria-label={`Remove ${selectedImages.size} selected image${selectedImages.size !== 1 ? 's' : ''}`}
                       >
-                        <Trash2 className="h-4 w-4" />
+                        <Trash2 className="h-4 w-4" aria-hidden="true" />
                         Remove Selected ({selectedImages.size})
                       </Button>
                     )}
                     <Button
-                      onClick={generatePdfPreview}
+                      onClick={() => {
+                        generatePdfPreview();
+                        handleModalOpen('pdfPreview');
+                      }}
                       disabled={previewLoading || images.length === 0}
                       variant="outline"
-                      className="flex items-center gap-2 transition-all duration-200 hover:scale-105 hover:shadow-md"
+                      className="flex items-center gap-2 transition-all duration-200 hover:scale-105 hover:shadow-md touch-button"
+                      aria-label="Generate PDF preview"
+                      aria-describedby="preview-description"
                     >
                       {previewLoading ? (
                         <>
-                          <RotateCw className="h-4 w-4 animate-spin" />
+                          <RotateCw className="h-4 w-4 animate-spin" aria-hidden="true" />
                           Generating Preview...
                         </>
                       ) : (
                         <>
-                          <FileText className="h-4 w-4" />
+                          <FileText className="h-4 w-4" aria-hidden="true" />
                           Preview PDF
                         </>
                       )}
                     </Button>
+                    <span id="preview-description" className="sr-only">Generates a preview of the PDF before conversion</span>
                     <Button
                       onClick={convertToPDF}
                       disabled={isConverting || images.length === 0}
-                      className="flex items-center gap-2 transition-all duration-200 hover:scale-105 hover:shadow-lg"
+                      className="flex items-center gap-2 transition-all duration-200 hover:scale-105 hover:shadow-lg touch-button"
+                      aria-label="Convert images to PDF"
+                      aria-describedby="convert-description"
                     >
                       {isConverting ? (
                         <>
-                          <RotateCw className="h-4 w-4 animate-spin" />
+                          <RotateCw className="h-4 w-4 animate-spin" aria-hidden="true" />
                           Converting...
                         </>
                       ) : (
                         <>
-                          <Download className="h-4 w-4" />
+                          <Download className="h-4 w-4" aria-hidden="true" />
                           Convert to PDF
                         </>
                       )}
                     </Button>
+                    <span id="convert-description" className="sr-only">Converts all uploaded images to a single PDF document</span>
                   </div>
                 </div>
               </CardHeader>
               <CardContent>
                 {/* Sorting Controls */}
-                <div className="flex items-center gap-4 mb-6">
+                <div className="flex items-center gap-4 mb-6 mobile-stack md:flex-row" role="group" aria-labelledby="sorting-controls-label">
+                  <span id="sorting-controls-label" className="sr-only">Image sorting controls</span>
                   <Label htmlFor="sort-by">Sort by:</Label>
                   <Select value={sortBy} onValueChange={(value: SortOption) => setSortBy(value)}>
-                    <SelectTrigger className="w-32">
+                    <SelectTrigger className="w-32 mobile-select" id="sort-by" aria-label="Select sorting method">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
@@ -683,20 +805,27 @@ export default function ImageToPDFConverter() {
                       variant="outline"
                       size="sm"
                       onClick={() => setSortOrder(prev => prev === "asc" ? "desc" : "asc")}
-                      className="flex items-center gap-2 transition-all duration-200 hover:scale-105 hover:bg-primary/10"
+                      className="flex items-center gap-2 transition-all duration-200 hover:scale-105 hover:bg-primary/10 touch-button"
+                      aria-label={`Change sort order to ${sortOrder === "asc" ? "descending" : "ascending"}`}
+                      aria-pressed={sortOrder === "asc"}
                     >
-                      {sortOrder === "asc" ? <SortAsc className="h-4 w-4" /> : <SortDesc className="h-4 w-4" />}
+                      {sortOrder === "asc" ? <SortAsc className="h-4 w-4" aria-hidden="true" /> : <SortDesc className="h-4 w-4" aria-hidden="true" />}
                       {sortOrder === "asc" ? "Ascending" : "Descending"}
                     </Button>
                   )}
                 </div>
 
                 {/* Image Grid */}
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+                <div 
+                  className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 mobile-image-grid"
+                  role="grid"
+                  aria-label="Image grid"
+                  aria-describedby="image-management-description"
+                >
                   {sortedImages().map((image, index) => (
                     <Card 
                       key={image.id} 
-                      className={`relative group transition-all duration-300 ease-out hover:shadow-xl hover:-translate-y-1 animate-in slide-in-from-bottom-2 duration-500 ${
+                      className={`relative group transition-all duration-300 ease-out hover:shadow-xl hover:-translate-y-1 animate-in slide-in-from-bottom-2 duration-500 mobile-image-card ${
                         draggedImage === image.id ? 'opacity-50 scale-95' : ''
                       } ${
                         dragOverImage === image.id ? 'ring-2 ring-primary ring-offset-2' : ''
@@ -707,6 +836,9 @@ export default function ImageToPDFConverter() {
                       onDragOver={(e) => handleImageDragOver(e, image.id)}
                       onDragLeave={handleImageDragLeave}
                       onDrop={(e) => handleImageDrop(e, image.id)}
+                      role="gridcell"
+                      aria-label={`Image: ${image.name}`}
+                      aria-describedby={`image-${image.id}-details`}
                     >
                       <CardContent className="p-4">
                         <div className="relative">
@@ -761,13 +893,13 @@ export default function ImageToPDFConverter() {
                           </div>
                         </div>
                         
-                        <div className="space-y-2">
+                        <div className="space-y-2" id={`image-${image.id}-details`}>
                           <div className="flex items-center justify-between">
                             <p className="font-medium text-sm truncate" title={image.name}>
                               {image.name}
                             </p>
                             {sortBy === "custom" && (
-                              <Badge variant="secondary" className="text-xs">
+                              <Badge variant="secondary" className="text-xs" aria-label={`Image ${image.order + 1} in custom order`}>
                                 #{image.order + 1}
                               </Badge>
                             )}
@@ -777,7 +909,7 @@ export default function ImageToPDFConverter() {
                             <p>Dimensions: {image.dimensions.width} × {image.dimensions.height}</p>
                             <p>Uploaded: {image.uploadTime.toLocaleTimeString()}</p>
                             {(image.rotation !== 0 || image.brightness !== 0 || image.contrast !== 0) && (
-                              <div className="flex gap-1 flex-wrap">
+                              <div className="flex gap-1 flex-wrap" role="group" aria-label="Image editing indicators">
                                 {image.rotation !== 0 && (
                                   <Badge variant="outline" className="text-xs">Rotated {image.rotation}°</Badge>
                                 )}
@@ -794,14 +926,15 @@ export default function ImageToPDFConverter() {
 
                         {/* Image Editing Controls */}
                         {editingImage === image.id && (
-                          <div className="mt-4 p-3 bg-muted/50 rounded-lg space-y-3 animate-in slide-in-from-top-2 duration-300">
+                          <div className="mt-4 p-3 bg-muted/50 rounded-lg space-y-3 animate-in slide-in-from-top-2 duration-300" role="group" aria-labelledby={`editing-${image.id}-title`}>
                             <div className="flex items-center justify-between">
-                              <span className="text-sm font-medium">Image Editing</span>
+                              <span className="text-sm font-medium" id={`editing-${image.id}-title`}>Image Editing</span>
                               <Button
                                 variant="ghost"
                                 size="sm"
                                 onClick={() => setEditingImage(null)}
                                 className="h-6 w-6 p-0"
+                                aria-label="Close image editing controls"
                               >
                                 ×
                               </Button>
@@ -980,37 +1113,46 @@ export default function ImageToPDFConverter() {
 
       {/* Preferences Modal */}
       {showPreferences && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 animate-in fade-in duration-300">
-          <div className="bg-background rounded-lg shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto animate-in zoom-in-95 duration-300">
+        <div 
+          ref={preferencesModalRef}
+          className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 animate-in fade-in duration-300"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="preferences-modal-title"
+          aria-describedby="preferences-modal-description"
+        >
+          <div className="bg-background rounded-lg shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto animate-in zoom-in-95 duration-300 mobile-modal">
             {/* Modal Header */}
             <div className="flex items-center justify-between p-4 border-b">
               <div className="flex items-center gap-2">
-                <Settings className="h-5 w-5 text-primary" />
-                <h3 className="text-lg font-semibold">User Preferences</h3>
+                <Settings className="h-5 w-5 text-primary" aria-hidden="true" />
+                <h3 className="text-lg font-semibold" id="preferences-modal-title">User Preferences</h3>
               </div>
               <Button
                 variant="ghost"
                 size="sm"
                 onClick={() => setShowPreferences(false)}
                 className="h-8 w-8 p-0"
+                aria-label="Close preferences modal"
               >
-                <X className="h-4 w-4" />
+                <X className="h-4 w-4" aria-hidden="true" />
               </Button>
             </div>
             
             {/* Modal Content */}
-            <div className="p-4 space-y-6">
+            <div className="p-4 space-y-6" id="preferences-modal-description">
+              <span className="sr-only">Configure default PDF settings, custom filename templates, and user preferences</span>
               {/* Default PDF Settings */}
               <div className="space-y-4">
                 <h4 className="font-medium text-foreground">Default PDF Settings</h4>
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mobile-gap">
                   <div>
                     <Label htmlFor="default-page-size">Default Page Size</Label>
                     <Select 
                       value={preferences.defaultPageSize} 
                       onValueChange={(value: PageSize) => savePreferences({ defaultPageSize: value })}
                     >
-                      <SelectTrigger>
+                      <SelectTrigger className="mobile-select">
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
@@ -1027,7 +1169,7 @@ export default function ImageToPDFConverter() {
                       value={preferences.defaultOrientation} 
                       onValueChange={(value: Orientation) => savePreferences({ defaultOrientation: value })}
                     >
-                      <SelectTrigger>
+                      <SelectTrigger className="mobile-select">
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
@@ -1043,7 +1185,7 @@ export default function ImageToPDFConverter() {
                       value={preferences.defaultQuality} 
                       onValueChange={(value: Quality) => savePreferences({ defaultQuality: value })}
                     >
-                      <SelectTrigger>
+                      <SelectTrigger className="mobile-select">
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
@@ -1060,7 +1202,7 @@ export default function ImageToPDFConverter() {
                       value={preferences.defaultLayout} 
                       onValueChange={(value: Layout) => savePreferences({ defaultLayout: value })}
                     >
-                      <SelectTrigger>
+                      <SelectTrigger className="mobile-select">
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
@@ -1082,6 +1224,7 @@ export default function ImageToPDFConverter() {
                     value={preferences.customFilename}
                     onChange={(e) => savePreferences({ customFilename: e.target.value })}
                     placeholder="converted-images-{date}"
+                    className="mobile-input"
                   />
                   <p className="text-xs text-muted-foreground">
                     Available variables: {'{date}'}, {'{time}'}, {'{count}'}
@@ -1117,15 +1260,17 @@ export default function ImageToPDFConverter() {
               <div className="text-sm text-muted-foreground">
                 Preferences are saved automatically
               </div>
-              <div className="flex gap-2">
+              <div className="flex gap-2 mobile-button-group">
                 <Button
                   variant="outline"
                   onClick={resetPreferences}
+                  className="touch-button"
                 >
                   Reset to Defaults
                 </Button>
                 <Button
                   onClick={() => setShowPreferences(false)}
+                  className="touch-button"
                 >
                   Close
                 </Button>
@@ -1137,21 +1282,29 @@ export default function ImageToPDFConverter() {
 
       {/* PDF Preview Modal */}
       {showPdfPreview && pdfPreview && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 animate-in fade-in duration-300">
-          <div className="bg-background rounded-lg shadow-2xl w-full max-w-4xl h-full max-h-[90vh] flex flex-col animate-in zoom-in-95 duration-300">
+        <div 
+          ref={pdfPreviewModalRef}
+          className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 animate-in fade-in duration-300"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="pdf-preview-modal-title"
+          aria-describedby="pdf-preview-modal-description"
+        >
+          <div className="bg-background rounded-lg shadow-2xl w-full max-w-4xl h-full max-h-[90vh] flex flex-col animate-in zoom-in-95 duration-300 mobile-modal">
             {/* Modal Header */}
             <div className="flex items-center justify-between p-4 border-b">
               <div className="flex items-center gap-2">
-                <FileText className="h-5 w-5 text-primary" />
-                <h3 className="text-lg font-semibold">PDF Preview</h3>
+                <FileText className="h-5 w-5 text-primary" aria-hidden="true" />
+                <h3 className="text-lg font-semibold" id="pdf-preview-modal-title">PDF Preview</h3>
               </div>
               <Button
                 variant="ghost"
                 size="sm"
                 onClick={closePdfPreview}
                 className="h-8 w-8 p-0"
+                aria-label="Close PDF preview modal"
               >
-                <X className="h-4 w-4" />
+                <X className="h-4 w-4" aria-hidden="true" />
               </Button>
             </div>
             
@@ -1161,7 +1314,9 @@ export default function ImageToPDFConverter() {
                 src={pdfPreview}
                 className="w-full h-full border rounded-lg"
                 title="PDF Preview"
+                aria-describedby="pdf-preview-modal-description"
               />
+              <span id="pdf-preview-modal-description" className="sr-only">Preview of the generated PDF document with current settings</span>
             </div>
             
             {/* Modal Footer */}
@@ -1169,10 +1324,11 @@ export default function ImageToPDFConverter() {
               <div className="text-sm text-muted-foreground">
                 Preview generated with current settings
               </div>
-              <div className="flex gap-2">
+              <div className="flex gap-2 mobile-button-group">
                 <Button
                   variant="outline"
                   onClick={closePdfPreview}
+                  className="touch-button"
                 >
                   Close
                 </Button>
@@ -1181,7 +1337,7 @@ export default function ImageToPDFConverter() {
                     closePdfPreview();
                     convertToPDF();
                   }}
-                  className="flex items-center gap-2"
+                  className="flex items-center gap-2 touch-button"
                 >
                   <Download className="h-4 w-4" />
                   Download PDF
