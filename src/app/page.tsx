@@ -532,7 +532,7 @@ export default function ImageToPDFConverter() {
                 variant="outline"
                 size="sm"
                 onClick={() => setShowPreferences(true)}
-                className="flex items-center gap-2"
+                className="flex items-center gap-2 transition-all duration-200 hover:scale-105 hover:bg-primary/10"
               >
                 <Settings className="h-4 w-4" />
                 Preferences
@@ -547,15 +547,15 @@ export default function ImageToPDFConverter() {
       <main className="container mx-auto px-4 py-8">
         {/* Status Messages */}
         {(error || success) && (
-          <div className="mb-6">
+          <div className="mb-6 animate-in slide-in-from-top-2 duration-500">
             {error && (
-              <div className="flex items-center gap-2 p-4 bg-destructive/10 border border-destructive/20 rounded-lg text-destructive">
+              <div className="flex items-center gap-2 p-4 bg-destructive/10 border border-destructive/20 rounded-lg text-destructive animate-in slide-in-from-left-2 duration-300">
                 <AlertCircle className="h-5 w-5" />
                 <span>{error}</span>
               </div>
             )}
             {success && (
-              <div className="flex items-center gap-2 p-4 bg-green-500/10 border border-green-500/20 rounded-lg text-green-600">
+              <div className="flex items-center gap-2 p-4 bg-green-500/10 border border-green-500/20 rounded-lg text-green-600 animate-in slide-in-from-right-2 duration-300">
                 <CheckCircle className="h-5 w-5" />
                 <span>{success}</span>
               </div>
@@ -577,10 +577,10 @@ export default function ImageToPDFConverter() {
                             ref={dropZoneRef}
                             onDragOver={handleFileDragOver}
                             onDrop={handleFileDrop}
-                            className="border-2 border-dashed border-muted-foreground/25 rounded-lg p-8 text-center hover:border-muted-foreground/50 transition-colors cursor-pointer"
+                            className="border-2 border-dashed border-muted-foreground/25 rounded-lg p-8 text-center hover:border-muted-foreground/50 transition-all duration-300 ease-in-out cursor-pointer hover:scale-[1.02] hover:shadow-lg"
                             onClick={() => fileInputRef.current?.click()}
                           >
-                <Upload className="mx-auto h-12 w-12 text-muted-foreground mb-4" />
+                <Upload className="mx-auto h-12 w-12 text-muted-foreground mb-4 transition-transform duration-300 hover:scale-110 hover:text-foreground" />
                 <p className="text-lg font-medium text-foreground mb-2">
                   Drop images here or click to browse
                 </p>
@@ -627,7 +627,7 @@ export default function ImageToPDFConverter() {
                       onClick={generatePdfPreview}
                       disabled={previewLoading || images.length === 0}
                       variant="outline"
-                      className="flex items-center gap-2"
+                      className="flex items-center gap-2 transition-all duration-200 hover:scale-105 hover:shadow-md"
                     >
                       {previewLoading ? (
                         <>
@@ -644,7 +644,7 @@ export default function ImageToPDFConverter() {
                     <Button
                       onClick={convertToPDF}
                       disabled={isConverting || images.length === 0}
-                      className="flex items-center gap-2"
+                      className="flex items-center gap-2 transition-all duration-200 hover:scale-105 hover:shadow-lg"
                     >
                       {isConverting ? (
                         <>
@@ -683,7 +683,7 @@ export default function ImageToPDFConverter() {
                       variant="outline"
                       size="sm"
                       onClick={() => setSortOrder(prev => prev === "asc" ? "desc" : "asc")}
-                      className="flex items-center gap-2"
+                      className="flex items-center gap-2 transition-all duration-200 hover:scale-105 hover:bg-primary/10"
                     >
                       {sortOrder === "asc" ? <SortAsc className="h-4 w-4" /> : <SortDesc className="h-4 w-4" />}
                       {sortOrder === "asc" ? "Ascending" : "Descending"}
@@ -693,14 +693,15 @@ export default function ImageToPDFConverter() {
 
                 {/* Image Grid */}
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-                  {sortedImages().map((image) => (
+                  {sortedImages().map((image, index) => (
                     <Card 
                       key={image.id} 
-                      className={`relative group transition-all duration-200 ${
+                      className={`relative group transition-all duration-300 ease-out hover:shadow-xl hover:-translate-y-1 animate-in slide-in-from-bottom-2 duration-500 ${
                         draggedImage === image.id ? 'opacity-50 scale-95' : ''
                       } ${
                         dragOverImage === image.id ? 'ring-2 ring-primary ring-offset-2' : ''
                       }`}
+                      style={{ animationDelay: `${index * 100}ms` }}
                       draggable={sortBy === "custom"}
                       onDragStart={(e) => handleImageDragStart(e, image.id)}
                       onDragOver={(e) => handleImageDragOver(e, image.id)}
@@ -745,7 +746,7 @@ export default function ImageToPDFConverter() {
                               variant="ghost"
                               size="sm"
                               onClick={() => removeImage(image.id)}
-                              className="h-8 w-8 p-0"
+                              className="h-8 w-8 p-0 transition-all duration-200 hover:scale-110 hover:bg-destructive/10 hover:text-destructive"
                             >
                               <Trash2 className="h-4 w-4" />
                             </Button>
@@ -753,7 +754,7 @@ export default function ImageToPDFConverter() {
                               variant="ghost"
                               size="sm"
                               onClick={() => toggleEditing(image.id)}
-                              className="h-8 w-8 p-0"
+                              className="h-8 w-8 p-0 transition-all duration-200 hover:scale-110 hover:bg-primary/10 hover:text-primary"
                             >
                               <Eye className="h-4 w-4" />
                             </Button>
@@ -793,7 +794,7 @@ export default function ImageToPDFConverter() {
 
                         {/* Image Editing Controls */}
                         {editingImage === image.id && (
-                          <div className="mt-4 p-3 bg-muted/50 rounded-lg space-y-3">
+                          <div className="mt-4 p-3 bg-muted/50 rounded-lg space-y-3 animate-in slide-in-from-top-2 duration-300">
                             <div className="flex items-center justify-between">
                               <span className="text-sm font-medium">Image Editing</span>
                               <Button
@@ -979,8 +980,8 @@ export default function ImageToPDFConverter() {
 
       {/* Preferences Modal */}
       {showPreferences && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-background rounded-lg shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 animate-in fade-in duration-300">
+          <div className="bg-background rounded-lg shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto animate-in zoom-in-95 duration-300">
             {/* Modal Header */}
             <div className="flex items-center justify-between p-4 border-b">
               <div className="flex items-center gap-2">
@@ -1136,8 +1137,8 @@ export default function ImageToPDFConverter() {
 
       {/* PDF Preview Modal */}
       {showPdfPreview && pdfPreview && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-background rounded-lg shadow-2xl w-full max-w-4xl h-full max-h-[90vh] flex flex-col">
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 animate-in fade-in duration-300">
+          <div className="bg-background rounded-lg shadow-2xl w-full max-w-4xl h-full max-h-[90vh] flex flex-col animate-in zoom-in-95 duration-300">
             {/* Modal Header */}
             <div className="flex items-center justify-between p-4 border-b">
               <div className="flex items-center gap-2">
