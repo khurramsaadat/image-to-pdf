@@ -9,7 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Upload, FileImage, Download, Trash2, RotateCw, SortAsc, SortDesc, Eye, AlertCircle, CheckCircle, RotateCcw, Sun, Contrast, GripVertical, Move } from "lucide-react";
+import { Upload, FileImage, Download, Trash2, RotateCw, SortAsc, SortDesc, Eye, AlertCircle, CheckCircle, RotateCcw, Sun, Contrast, GripVertical, Move, X, FileText } from "lucide-react";
 import { convertImagesToPDF, PDFSettings, ImageData, rotateImage, adjustBrightness, adjustContrast } from "@/lib/pdf-converter";
 
 interface ImageFile {
@@ -48,6 +48,9 @@ export default function ImageToPDFConverter() {
   const [editingImage, setEditingImage] = useState<string | null>(null);
   const [draggedImage, setDraggedImage] = useState<string | null>(null);
   const [dragOverImage, setDragOverImage] = useState<string | null>(null);
+  const [pdfPreview, setPdfPreview] = useState<string | null>(null);
+  const [showPdfPreview, setShowPdfPreview] = useState(false);
+  const [previewLoading, setPreviewLoading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const dropZoneRef = useRef<HTMLDivElement>(null);
 
@@ -294,6 +297,52 @@ export default function ImageToPDFConverter() {
     });
   }, [images, sortBy, sortOrder]);
 
+  // Generate PDF preview
+  const generatePdfPreview = useCallback(async () => {
+    if (images.length === 0) return;
+    
+    setPreviewLoading(true);
+    setError(null);
+    setSuccess(null);
+    
+    try {
+      // Prepare images for conversion in current order
+      const imagesForConversion: ImageData[] = sortedImages().map(img => ({
+        id: img.id,
+        file: img.file,
+        preview: img.preview,
+        name: img.name,
+        dimensions: img.dimensions,
+        rotation: img.rotation,
+        brightness: img.brightness,
+        contrast: img.contrast
+      }));
+      
+      // Prepare PDF settings
+      const pdfSettings: PDFSettings = {
+        pageSize: pageSize,
+        orientation: orientation,
+        quality: quality,
+        layout: layout
+      };
+      
+      // Convert to PDF
+      const pdfBlob = await convertImagesToPDF(imagesForConversion, pdfSettings);
+      
+      // Create preview URL
+      const previewUrl = URL.createObjectURL(pdfBlob);
+      setPdfPreview(previewUrl);
+      setShowPdfPreview(true);
+      setSuccess(`PDF preview generated successfully`);
+      
+    } catch (error) {
+      console.error('PDF preview generation failed:', error);
+      setError(`PDF preview generation failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    } finally {
+      setPreviewLoading(false);
+    }
+  }, [images, pageSize, orientation, quality, layout, sortedImages]);
+
   // Convert to PDF
   const convertToPDF = useCallback(async () => {
     if (images.length === 0) return;
@@ -347,6 +396,15 @@ export default function ImageToPDFConverter() {
       setIsConverting(false);
     }
   }, [images, pageSize, orientation, quality, layout, sortedImages]);
+
+  // Close PDF preview
+  const closePdfPreview = useCallback(() => {
+    setShowPdfPreview(false);
+    if (pdfPreview) {
+      URL.revokeObjectURL(pdfPreview);
+      setPdfPreview(null);
+    }
+  }, [pdfPreview]);
 
   // Format file size
   const formatFileSize = (bytes: number) => {
@@ -469,6 +527,24 @@ export default function ImageToPDFConverter() {
                         Remove Selected ({selectedImages.size})
                       </Button>
                     )}
+                    <Button
+                      onClick={generatePdfPreview}
+                      disabled={previewLoading || images.length === 0}
+                      variant="outline"
+                      className="flex items-center gap-2"
+                    >
+                      {previewLoading ? (
+                        <>
+                          <RotateCw className="h-4 w-4 animate-spin" />
+                          Generating Preview...
+                        </>
+                      ) : (
+                        <>
+                          <FileText className="h-4 w-4" />
+                          Preview PDF
+                        </>
+                      )}
+                    </Button>
                     <Button
                       onClick={convertToPDF}
                       disabled={isConverting || images.length === 0}
@@ -800,6 +876,63 @@ export default function ImageToPDFConverter() {
           </Card>
         </div>
       </main>
+
+      {/* PDF Preview Modal */}
+      {showPdfPreview && pdfPreview && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-background rounded-lg shadow-2xl w-full max-w-4xl h-full max-h-[90vh] flex flex-col">
+            {/* Modal Header */}
+            <div className="flex items-center justify-between p-4 border-b">
+              <div className="flex items-center gap-2">
+                <FileText className="h-5 w-5 text-primary" />
+                <h3 className="text-lg font-semibold">PDF Preview</h3>
+              </div>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={closePdfPreview}
+                className="h-8 w-8 p-0"
+              >
+                <X className="h-4 w-4" />
+              </Button>
+            </div>
+            
+            {/* Modal Content */}
+            <div className="flex-1 p-4 overflow-hidden">
+              <iframe
+                src={pdfPreview}
+                className="w-full h-full border rounded-lg"
+                title="PDF Preview"
+              />
+            </div>
+            
+            {/* Modal Footer */}
+            <div className="flex items-center justify-between p-4 border-t">
+              <div className="text-sm text-muted-foreground">
+                Preview generated with current settings
+              </div>
+              <div className="flex gap-2">
+                <Button
+                  variant="outline"
+                  onClick={closePdfPreview}
+                >
+                  Close
+                </Button>
+                <Button
+                  onClick={() => {
+                    closePdfPreview();
+                    convertToPDF();
+                  }}
+                  className="flex items-center gap-2"
+                >
+                  <Download className="h-4 w-4" />
+                  Download PDF
+                </Button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Footer */}
       <footer className="border-t bg-card mt-16">
