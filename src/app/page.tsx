@@ -9,7 +9,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Upload, FileImage, Download, Trash2, RotateCw, SortAsc, SortDesc, Eye } from "lucide-react";
+import { Upload, FileImage, Download, Trash2, RotateCw, SortAsc, SortDesc, Eye, AlertCircle, CheckCircle } from "lucide-react";
+import { convertImagesToPDF, PDFSettings, ImageData } from "@/lib/pdf-converter";
 
 interface ImageFile {
   id: string;
@@ -25,6 +26,8 @@ type SortOption = "name" | "size" | "date" | "dimensions";
 type SortOrder = "asc" | "desc";
 type PageSize = "A4" | "Letter" | "Legal";
 type Orientation = "portrait" | "landscape";
+type Quality = "low" | "medium" | "high";
+type Layout = "one-per-page" | "multiple-per-page";
 
 export default function ImageToPDFConverter() {
   const [images, setImages] = useState<ImageFile[]>([]);
@@ -32,8 +35,12 @@ export default function ImageToPDFConverter() {
   const [sortOrder, setSortOrder] = useState<SortOrder>("asc");
   const [pageSize, setPageSize] = useState<PageSize>("A4");
   const [orientation, setOrientation] = useState<Orientation>("portrait");
+  const [quality, setQuality] = useState<Quality>("high");
+  const [layout, setLayout] = useState<Layout>("one-per-page");
   const [isConverting, setIsConverting] = useState(false);
   const [selectedImages, setSelectedImages] = useState<Set<string>>(new Set());
+  const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const dropZoneRef = useRef<HTMLDivElement>(null);
 
@@ -41,22 +48,46 @@ export default function ImageToPDFConverter() {
   const handleFileSelect = useCallback((files: FileList | null) => {
     if (!files) return;
     
-    const newImages: ImageFile[] = Array.from(files)
-      .filter(file => file.type.startsWith('image/'))
-      .map(file => {
-        const id = Math.random().toString(36).substr(2, 9);
-        const preview = URL.createObjectURL(file);
-        
-        return {
-          id,
-          file,
-          preview,
-          name: file.name,
-          size: file.size,
-          dimensions: { width: 0, height: 0 },
-          uploadTime: new Date()
-        };
-      });
+    setError(null);
+    setSuccess(null);
+    
+    // Validate file count
+    if (images.length + files.length > 50) {
+      setError("Maximum 50 images allowed per session");
+      return;
+    }
+    
+    // Validate file types and sizes
+    const validFiles = Array.from(files).filter(file => {
+      if (!file.type.startsWith('image/')) {
+        setError(`File ${file.name} is not a valid image`);
+        return false;
+      }
+      
+      if (file.size > 10 * 1024 * 1024) { // 10MB limit
+        setError(`File ${file.name} exceeds 10MB limit`);
+        return false;
+      }
+      
+      return true;
+    });
+    
+    if (validFiles.length === 0) return;
+    
+    const newImages: ImageFile[] = validFiles.map(file => {
+      const id = Math.random().toString(36).substr(2, 9);
+      const preview = URL.createObjectURL(file);
+      
+      return {
+        id,
+        file,
+        preview,
+        name: file.name,
+        size: file.size,
+        dimensions: { width: 0, height: 0 },
+        uploadTime: new Date()
+      };
+    });
 
     // Load image dimensions
     newImages.forEach(img => {
@@ -68,11 +99,15 @@ export default function ImageToPDFConverter() {
             : p
         ));
       };
+      imgElement.onerror = () => {
+        setError(`Failed to load image ${img.name}`);
+      };
       imgElement.src = img.preview;
     });
 
     setImages(prev => [...prev, ...newImages]);
-  }, []);
+    setSuccess(`Successfully uploaded ${validFiles.length} image${validFiles.length !== 1 ? 's' : ''}`);
+  }, [images]);
 
   // Handle drag and drop
   const handleDragOver = useCallback((e: React.DragEvent) => {
@@ -88,12 +123,20 @@ export default function ImageToPDFConverter() {
 
   // Remove image
   const removeImage = useCallback((id: string) => {
-    setImages(prev => prev.filter(img => img.id !== id));
+    setImages(prev => {
+      const image = prev.find(img => img.id === id);
+      if (image) {
+        URL.revokeObjectURL(image.preview); // Clean up memory
+      }
+      return prev.filter(img => img.id !== id);
+    });
     setSelectedImages(prev => {
       const newSet = new Set(prev);
       newSet.delete(id);
       return newSet;
     });
+    setError(null);
+    setSuccess(null);
   }, []);
 
   // Toggle image selection
@@ -111,8 +154,14 @@ export default function ImageToPDFConverter() {
 
   // Remove selected images
   const removeSelectedImages = useCallback(() => {
-    setImages(prev => prev.filter(img => !selectedImages.has(img.id)));
+    setImages(prev => {
+      const toRemove = prev.filter(img => selectedImages.has(img.id));
+      toRemove.forEach(img => URL.revokeObjectURL(img.preview)); // Clean up memory
+      return prev.filter(img => !selectedImages.has(img.id));
+    });
     setSelectedImages(new Set());
+    setError(null);
+    setSuccess(null);
   }, [selectedImages]);
 
   // Sort images
@@ -144,24 +193,51 @@ export default function ImageToPDFConverter() {
     if (images.length === 0) return;
     
     setIsConverting(true);
+    setError(null);
+    setSuccess(null);
     
     try {
-      // This is a placeholder for the actual PDF conversion logic
-      // In a real implementation, you would use jsPDF and html2canvas
-      await new Promise(resolve => setTimeout(resolve, 2000)); // Simulate conversion
+      // Prepare images for conversion
+      const imagesForConversion: ImageData[] = images.map(img => ({
+        id: img.id,
+        file: img.file,
+        preview: img.preview,
+        name: img.name,
+        dimensions: img.dimensions
+      }));
       
-      // Create a download link for the PDF
+      // Prepare PDF settings
+      const pdfSettings: PDFSettings = {
+        pageSize: pageSize,
+        orientation: orientation,
+        quality: quality,
+        layout: layout
+      };
+      
+      // Convert to PDF
+      const pdfBlob = await convertImagesToPDF(imagesForConversion, pdfSettings);
+      
+      // Create download link
+      const url = URL.createObjectURL(pdfBlob);
       const link = document.createElement('a');
-      link.href = '#';
+      link.href = url;
       link.download = `converted-images-${new Date().toISOString().split('T')[0]}.pdf`;
+      document.body.appendChild(link);
       link.click();
+      document.body.removeChild(link);
+      
+      // Clean up
+      URL.revokeObjectURL(url);
+      
+      setSuccess(`Successfully converted ${images.length} image${images.length !== 1 ? 's' : ''} to PDF`);
       
     } catch (error) {
       console.error('PDF conversion failed:', error);
+      setError(`PDF conversion failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
     } finally {
       setIsConverting(false);
     }
-  }, [images]);
+  }, [images, pageSize, orientation, quality, layout]);
 
   // Format file size
   const formatFileSize = (bytes: number) => {
@@ -171,6 +247,19 @@ export default function ImageToPDFConverter() {
     const i = Math.floor(Math.log(bytes) / Math.log(k));
     return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
   };
+
+  // Clear messages after 5 seconds
+  const clearMessages = useCallback(() => {
+    setTimeout(() => {
+      setError(null);
+      setSuccess(null);
+    }, 5000);
+  }, []);
+
+  // Auto-clear messages when they change
+  if (error || success) {
+    clearMessages();
+  }
 
   return (
     <div className="min-h-screen bg-background">
@@ -193,6 +282,24 @@ export default function ImageToPDFConverter() {
 
       {/* Main Content */}
       <main className="container mx-auto px-4 py-8">
+        {/* Status Messages */}
+        {(error || success) && (
+          <div className="mb-6">
+            {error && (
+              <div className="flex items-center gap-2 p-4 bg-destructive/10 border border-destructive/20 rounded-lg text-destructive">
+                <AlertCircle className="h-5 w-5" />
+                <span>{error}</span>
+              </div>
+            )}
+            {success && (
+              <div className="flex items-center gap-2 p-4 bg-green-500/10 border border-green-500/20 rounded-lg text-green-600">
+                <CheckCircle className="h-5 w-5" />
+                <span>{success}</span>
+              </div>
+            )}
+          </div>
+        )}
+
         <div className="grid gap-8">
           {/* Upload Section */}
           <Card>
@@ -386,7 +493,7 @@ export default function ImageToPDFConverter() {
                 <div className="space-y-4">
                   <div>
                     <Label htmlFor="quality">Quality</Label>
-                    <Select defaultValue="high">
+                    <Select value={quality} onValueChange={(value: Quality) => setQuality(value)}>
                       <SelectTrigger>
                         <SelectValue />
                       </SelectTrigger>
@@ -400,7 +507,7 @@ export default function ImageToPDFConverter() {
                   
                   <div>
                     <Label htmlFor="layout">Layout</Label>
-                    <Select defaultValue="one-per-page">
+                    <Select value={layout} onValueChange={(value: Layout) => setLayout(value)}>
                       <SelectTrigger>
                         <SelectValue />
                       </SelectTrigger>
